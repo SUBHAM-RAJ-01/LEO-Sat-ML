@@ -1,0 +1,10 @@
+numpy==1.26.4
+scipy==1.13.0
+networkx==3.3
+torch==2.3.0
+stable-baselines3==2.3.2
+gymnasium==0.29.1
+matplotlib==3.8.4
+plotly==5.22.0
+pyyaml==6.0.1
+pandas==2.2.2
