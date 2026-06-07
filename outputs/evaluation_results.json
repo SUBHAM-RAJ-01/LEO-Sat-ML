@@ -1,0 +1,143 @@
+{
+  "drl": {
+    "pdr": 99.97477931904162,
+    "avg_latency": 15.852508226825961,
+    "p95_latency": 28.885623747266212,
+    "latency_ms": {
+      "mmtc": 15.837103225287319,
+      "embb": 15.874478500330307,
+      "urllc": 15.842868113886228
+    },
+    "latency_p95_ms": {
+      "mmtc": 28.699772995677282,
+      "embb": 28.69857900338913,
+      "urllc": 29.03404870589406
+    },
+    "jitter_ms": {
+      "mmtc": 8.24394993652835,
+      "embb": 8.274192222763867,
+      "urllc": 8.286469703598296
+    },
+    "throughput_mbps": {
+      "mmtc": 0.015168000000000001,
+      "embb": 0.21375000000000002,
+      "urllc": 0.034662399999999996
+    },
+    "qos_satisfaction": {
+      "mmtc": 100.0,
+      "embb": 100.0,
+      "urllc": 85.67208271787297
+    },
+    "pdr_by_slice": {
+      "mmtc": 100.0,
+      "embb": 100.0,
+      "urllc": 99.92619926199262
+    },
+    "avg_bandwidth_utilization": 0.015463775072352888,
+    "avg_hop_count": 7.341069626639758,
+    "routing_loops": 0,
+    "total_delivered": 3964,
+    "total_dropped": 1,
+    "drop_reasons": {
+      "loops": 0,
+      "max_hops": 1,
+      "invalid": 0,
+      "congestion": 0,
+      "qos_timeout": 0
+    }
+  },
+  "dijkstra": {
+    "pdr": 93.17659085100945,
+    "avg_latency": 12.251361065460737,
+    "p95_latency": 22.540389123788195,
+    "latency_ms": {
+      "mmtc": 12.364146068336465,
+      "embb": 12.242279778955831,
+      "urllc": 12.167944568417985
+    },
+    "latency_p95_ms": {
+      "mmtc": 22.294534892508484,
+      "embb": 22.66926541653455,
+      "urllc": 22.57733790171014
+    },
+    "jitter_ms": {
+      "mmtc": 6.351144625800353,
+      "embb": 6.57618617493607,
+      "urllc": 6.580993610364606
+    },
+    "throughput_mbps": {
+      "mmtc": 0.0135808,
+      "embb": 0.19365000000000002,
+      "urllc": 0.0331264
+    },
+    "qos_satisfaction": {
+      "mmtc": 100.0,
+      "embb": 100.0,
+      "urllc": 99.38176197836167
+    },
+    "pdr_by_slice": {
+      "mmtc": 93.64518976169461,
+      "embb": 92.74425287356321,
+      "urllc": 93.22766570605188
+    },
+    "avg_bandwidth_utilization": 0.020338983877616606,
+    "avg_hop_count": 9.090510148107516,
+    "routing_loops": 0,
+    "total_delivered": 3646,
+    "total_dropped": 267,
+    "drop_reasons": {
+      "loops": 0,
+      "max_hops": 267,
+      "invalid": 0,
+      "congestion": 0,
+      "qos_timeout": 0
+    }
+  },
+  "ospf": {
+    "pdr": 99.89942167462912,
+    "avg_latency": 13.091164986885978,
+    "p95_latency": 24.294757870096348,
+    "latency_ms": {
+      "mmtc": 13.176599205267115,
+      "embb": 13.063068256731961,
+      "urllc": 13.0467880180436
+    },
+    "latency_p95_ms": {
+      "mmtc": 23.982102887088185,
+      "embb": 24.482211892012444,
+      "urllc": 23.906281332033284
+    },
+    "jitter_ms": {
+      "mmtc": 6.930570883649483,
+      "embb": 7.177308200882568,
+      "urllc": 7.016078269893017
+    },
+    "throughput_mbps": {
+      "mmtc": 0.015155199999999999,
+      "embb": 0.20834999999999998,
+      "urllc": 0.03584
+    },
+    "qos_satisfaction": {
+      "mmtc": 100.0,
+      "embb": 100.0,
+      "urllc": 96.78571428571429
+    },
+    "pdr_by_slice": {
+      "mmtc": 100.0,
+      "embb": 99.92805755395683,
+      "urllc": 99.78617248752673
+    },
+    "avg_bandwidth_utilization": 0.016794813034231325,
+    "avg_hop_count": 7.988170148502391,
+    "routing_loops": 0,
+    "total_delivered": 3973,
+    "total_dropped": 4,
+    "drop_reasons": {
+      "loops": 0,
+      "max_hops": 4,
+      "invalid": 0,
+      "congestion": 0,
+      "qos_timeout": 0
+    }
+  }
+}

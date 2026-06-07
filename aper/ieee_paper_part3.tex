@@ -1,0 +1,235 @@
+% Part 3: Proposed TA-PPO Framework
+
+\section{Traffic-Aware Proximal Policy Optimization}
+
+This section presents our Traffic-Aware PPO (TA-PPO) framework, which integrates traffic prediction with deep reinforcement learning for proactive routing.
+
+\subsection{Architecture Overview}
+
+Figure \ref{fig:architecture} illustrates the complete TA-PPO architecture, consisting of four main components:
+
+\begin{enumerate}
+\item \textbf{Data Collector}: Continuously monitors and buffers link metrics over a sliding window
+\item \textbf{Prediction Module}: LSTM/GRU networks forecast future congestion
+\item \textbf{PPO Agent}: Actor-critic networks learn optimal routing policy
+\item \textbf{Routing Executor}: Implements routing decisions and updates network state
+\end{enumerate}
+
+% Include architecture diagram
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.9\textwidth]{architecture_diagram.png}
+\caption{Traffic-Aware PPO Architecture. The system integrates data collection, traffic prediction, and DRL-based routing in a closed loop. Historical metrics feed into LSTM/GRU models to predict future congestion, which enhances the state representation for the PPO agent.}
+\label{fig:architecture}
+\end{figure*}
+
+\subsection{Traffic Prediction Module}
+
+\subsubsection{Data Collection}
+
+The Data Collector maintains a sliding window buffer for each ISL, tracking seven key metrics:
+
+\begin{equation}
+\mathbf{H}_{ij}(t) = [h_{ij}(t-W+1), ..., h_{ij}(t)]
+\end{equation}
+
+where $W$ is the lookback window (typically 50 timesteps) and each $h_{ij}(\tau)$ contains:
+
+\begin{equation}
+h_{ij}(\tau) = [Q_{ij}(\tau), U_{ij}(\tau), B_{ij}(\tau), D_{ij}(\tau), \delta_{ij}(\tau), \rho_{ij}(\tau), SR_{ij}(\tau)]
+\end{equation}
+
+representing queue length, utilization, bandwidth used, packet drops, average delay, packet arrival rate, and success rate respectively.
+
+\subsubsection{LSTM Prediction Model}
+
+The LSTM architecture consists of:
+
+\begin{equation}
+\begin{split}
+\mathbf{f}_t &= \sigma(\mathbf{W}_f \cdot [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_f) \\
+\mathbf{i}_t &= \sigma(\mathbf{W}_i \cdot [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_i) \\
+\mathbf{o}_t &= \sigma(\mathbf{W}_o \cdot [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_o) \\
+\tilde{\mathbf{C}}_t &= \tanh(\mathbf{W}_C \cdot [\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_C) \\
+\mathbf{C}_t &= \mathbf{f}_t \odot \mathbf{C}_{t-1} + \mathbf{i}_t \odot \tilde{\mathbf{C}}_t \\
+\mathbf{h}_t &= \mathbf{o}_t \odot \tanh(\mathbf{C}_t)
+\end{split}
+\end{equation}
+
+where $\mathbf{f}_t, \mathbf{i}_t, \mathbf{o}_t$ are forget, input, and output gates; $\mathbf{C}_t$ is the cell state; $\sigma$ is the sigmoid function; and $\odot$ denotes element-wise multiplication.
+
+The prediction layer maps the final hidden state to future predictions:
+
+\begin{equation}
+\hat{Q}_{ij}(t+1:t+H) = \mathbf{W}_{\text{out}} \cdot \mathbf{h}_t + \mathbf{b}_{\text{out}}
+\end{equation}
+
+where $H$ is the prediction horizon (typically 10 timesteps).
+
+\subsubsection{GRU Prediction Model}
+
+The GRU architecture simplifies LSTM by combining forget and input gates:
+
+\begin{equation}
+\begin{split}
+\mathbf{z}_t &= \sigma(\mathbf{W}_z \cdot [\mathbf{h}_{t-1}, \mathbf{x}_t]) \\
+\mathbf{r}_t &= \sigma(\mathbf{W}_r \cdot [\mathbf{h}_{t-1}, \mathbf{x}_t]) \\
+\tilde{\mathbf{h}}_t &= \tanh(\mathbf{W} \cdot [\mathbf{r}_t \odot \mathbf{h}_{t-1}, \mathbf{x}_t]) \\
+\mathbf{h}_t &= (1 - \mathbf{z}_t) \odot \mathbf{h}_{t-1} + \mathbf{z}_t \odot \tilde{\mathbf{h}}_t
+\end{split}
+\end{equation}
+
+where $\mathbf{z}_t$ is the update gate and $\mathbf{r}_t$ is the reset gate.
+
+GRU has fewer parameters than LSTM, often resulting in faster training and inference while maintaining comparable accuracy.
+
+\subsubsection{Training Procedure}
+
+The prediction models are trained offline using collected traffic data. The loss function is Mean Squared Error (MSE):
+
+\begin{equation}
+\mathcal{L}_{\text{pred}} = \frac{1}{N \cdot H} \sum_{n=1}^{N} \sum_{h=1}^{H} \left(Q_{ij}(t+h) - \hat{Q}_{ij}(t+h)\right)^2
+\end{equation}
+
+We use Adam optimizer with learning rate $\eta = 0.001$ and early stopping with patience of 10 epochs. Data is normalized using:
+
+\begin{equation}
+\mathbf{x}_{\text{norm}} = \frac{\mathbf{x} - \mu}{\sigma}
+\end{equation}
+
+where $\mu$ and $\sigma$ are mean and standard deviation computed from training data.
+
+\subsection{PPO Agent}
+
+\subsubsection{Actor-Critic Architecture}
+
+The PPO agent consists of two neural networks sharing a common feature extractor:
+
+\textbf{Feature Extractor}:
+\begin{equation}
+\mathbf{z}_t = \text{ReLU}(\mathbf{W}_1 \cdot \mathbf{s}_t + \mathbf{b}_1)
+\end{equation}
+
+\textbf{Actor (Policy) Network}:
+\begin{equation}
+\pi_\theta(a_t | \mathbf{s}_t) = \text{Softmax}(\mathbf{W}_\pi \cdot \mathbf{z}_t + \mathbf{b}_\pi)
+\end{equation}
+
+\textbf{Critic (Value) Network}:
+\begin{equation}
+V_\phi(\mathbf{s}_t) = \mathbf{W}_V \cdot \mathbf{z}_t + \mathbf{b}_V
+\end{equation}
+
+\subsubsection{PPO Objective}
+
+The PPO objective maximizes:
+
+\begin{equation}
+\mathcal{L}^{\text{PPO}}(\theta) = \mathbb{E}_t\left[\min\left(r_t(\theta)\hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon)\hat{A}_t\right)\right]
+\end{equation}
+
+where:
+\begin{itemize}
+\item $r_t(\theta) = \frac{\pi_\theta(a_t|\mathbf{s}_t)}{\pi_{\theta_{\text{old}}}(a_t|\mathbf{s}_t)}$ is the probability ratio
+\item $\hat{A}_t$ is the advantage estimate computed using Generalized Advantage Estimation (GAE):
+\begin{equation}
+\hat{A}_t = \sum_{l=0}^{\infty} (\gamma \lambda)^l \delta_{t+l}
+\end{equation}
+where $\delta_t = R_t + \gamma V(\mathbf{s}_{t+1}) - V(\mathbf{s}_t)$
+\item $\epsilon$ is the clipping parameter (typically 0.15)
+\end{itemize}
+
+The complete loss function combines policy, value, and entropy terms:
+
+\begin{equation}
+\mathcal{L}(\theta) = \mathcal{L}^{\text{PPO}}(\theta) - c_1 \mathcal{L}^V(\theta) + c_2 \mathcal{H}(\pi_\theta)
+\end{equation}
+
+where:
+\begin{itemize}
+\item $\mathcal{L}^V(\theta) = (V_\theta(\mathbf{s}_t) - V_{\text{target}})^2$ is the value loss
+\item $\mathcal{H}(\pi_\theta) = -\sum_a \pi_\theta(a|\mathbf{s}) \log \pi_\theta(a|\mathbf{s})$ is the entropy bonus
+\item $c_1 = 0.7$ and $c_2 = 0.005$ are coefficients
+\end{itemize}
+
+\subsection{Predictive Routing Cost Function}
+
+The key innovation of TA-PPO is incorporating predicted congestion into routing decisions. The routing cost for link $(i,j)$ is:
+
+\begin{equation}
+C_{ij}(t) = w_1 \tau_{ij}(t) + w_2 Q_{ij}(t) + w_3 \hat{Q}_{ij}(t+h)
+\end{equation}
+
+where:
+\begin{itemize}
+\item $w_1 = 1.0$ weights propagation delay
+\item $w_2 = 2.0$ weights current congestion
+\item $w_3 = 5.0$ weights predicted congestion (higher to prioritize avoidance)
+\end{itemize}
+
+This cost function enables proactive routing: even if a link is currently uncongested ($Q_{ij}(t) \approx 0$), it will be avoided if predicted to become congested ($\hat{Q}_{ij}(t+h) > 0$).
+
+\subsection{Integration and Execution Flow}
+
+Algorithm \ref{alg:tappo} presents the complete TA-PPO execution flow.
+
+\begin{algorithm}[t]
+\caption{Traffic-Aware PPO Routing}
+\label{alg:tappo}
+\begin{algorithmic}[1]
+\STATE Initialize PPO networks $\pi_\theta$, $V_\phi$
+\STATE Load pre-trained LSTM/GRU model $M_{\text{pred}}$
+\STATE Initialize data collector with buffer size $W$
+\FOR{each episode}
+    \STATE Reset network state
+    \FOR{each timestep $t$}
+        \FOR{each packet at satellite $s_i$}
+            \STATE Collect current metrics for all neighbors
+            \IF{$t \geq W_{\text{warmup}}$}
+                \STATE Retrieve history $\mathbf{H}_{ij}$ for each neighbor $j$
+                \STATE Predict: $\hat{Q}_{ij}(t+h) = M_{\text{pred}}(\mathbf{H}_{ij})$
+            \ELSE
+                \STATE Set $\hat{Q}_{ij}(t+h) = 0$ (no prediction)
+            \ENDIF
+            \STATE Construct state $\mathbf{s}_t$ with predictions
+            \STATE Sample action: $a_t \sim \pi_\theta(\cdot | \mathbf{s}_t)$
+            \STATE Forward packet to selected neighbor
+            \STATE Observe reward $R_t$ and next state $\mathbf{s}_{t+1}$
+            \STATE Store $(\mathbf{s}_t, a_t, R_t, \mathbf{s}_{t+1})$ in buffer
+        \ENDFOR
+        \STATE Update network topology $\mathcal{G}(t+1)$
+        \STATE Update data collector with new metrics
+    \ENDFOR
+    \IF{buffer contains $\geq B$ samples}
+        \STATE Compute advantages using GAE
+        \FOR{$K$ epochs}
+            \STATE Sample mini-batch from buffer
+            \STATE Update $\theta$ by maximizing $\mathcal{L}(\theta)$
+        \ENDFOR
+    \ENDIF
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+The algorithm operates in three phases:
+
+\begin{enumerate}
+\item \textbf{Warmup Phase} ($t < W_{\text{warmup}}$): Collect historical data without predictions, using baseline routing.
+
+\item \textbf{Prediction Phase} ($t \geq W_{\text{warmup}}$): Use trained prediction models to forecast congestion and enhance state representation.
+
+\item \textbf{Learning Phase}: Continuously update PPO networks using collected experience.
+\end{enumerate}
+
+\subsection{Computational Complexity}
+
+The computational complexity per routing decision is:
+
+\begin{itemize}
+\item Prediction: $O(W \cdot H \cdot d_h)$ for LSTM/GRU, where $d_h$ is hidden dimension
+\item Policy evaluation: $O(N_{\max} \cdot d_f + d_f \cdot d_\pi)$ for actor network
+\item Total: $O(W \cdot H \cdot d_h + N_{\max} \cdot d_f)$
+\end{itemize}
+
+With $W=50$, $H=10$, $d_h=128$, $N_{\max}=8$, $d_f=256$, this is tractable for onboard satellite processors.
+

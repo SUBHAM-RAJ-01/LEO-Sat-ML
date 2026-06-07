@@ -1,0 +1,50 @@
+======================================================================
+EVALUATION RESULTS SUMMARY
+Generated: 2026-06-03 23:03:04
+======================================================================
+
+OVERALL PERFORMANCE COMPARISON
+----------------------------------------------------------------------
+Metric                    DRL             DIJKSTRA        OSPF           
+----------------------------------------------------------------------
+PDR (%)                   99.97           93.18           99.90          
+Avg Latency (ms)          15.85           12.25           13.09          
+P95 Latency (ms)          28.89           22.54           24.29          
+Routing Loops             0.00            0.00            0.00           
+Avg Hop Count             7.34            9.09            7.99           
+Delivered Packets         3964.00         3646.00         3973.00        
+Dropped Packets           1.00            267.00          4.00           
+
+QoS SATISFACTION BY SLICE (%)
+----------------------------------------------------------------------
+Slice                     DRL             DIJKSTRA        OSPF           
+----------------------------------------------------------------------
+URLLC                     85.67           99.38           96.79          
+EMBB                      100.00          100.00          100.00         
+MMTC                      100.00          100.00          100.00         
+
+DROP REASONS BREAKDOWN
+----------------------------------------------------------------------
+
+DRL:
+  loops               :     0
+  max_hops            :     1
+  invalid             :     0
+  congestion          :     0
+  qos_timeout         :     0
+
+DIJKSTRA:
+  loops               :     0
+  max_hops            :   267
+  invalid             :     0
+  congestion          :     0
+  qos_timeout         :     0
+
+OSPF:
+  loops               :     0
+  max_hops            :     4
+  invalid             :     0
+  congestion          :     0
+  qos_timeout         :     0
+
+======================================================================

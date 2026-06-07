@@ -1,0 +1,201 @@
+% Part 4: Experimental Setup and Implementation
+
+\section{Experimental Setup and Implementation}
+
+\subsection{Simulation Environment}
+
+We implemented a comprehensive LEO satellite network simulator in Python using the following components:
+
+\begin{itemize}
+\item \textbf{Orbital Mechanics}: Circular orbit model with Walker-Delta constellation configuration
+\item \textbf{Network Stack}: Custom discrete-event simulator for packet forwarding and queue management
+\item \textbf{DRL Framework}: Stable-Baselines3 implementation of PPO \cite{raffin2021stable}
+\item \textbf{Prediction Models}: PyTorch implementation of LSTM and GRU networks
+\end{itemize}
+
+\subsection{Constellation Configuration}
+
+Table \ref{tab:constellation} summarizes the satellite constellation parameters.
+
+\begin{table}[h]
+\centering
+\caption{LEO Satellite Constellation Parameters}
+\label{tab:constellation}
+\begin{tabular}{|l|c|}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+\hline
+Total Satellites & 248 \\
+Orbital Planes & 28 (3 layers) \\
+Satellites per Plane & Variable (6-10) \\
+Altitude - Layer 1 & 500 km \\
+Altitude - Layer 2 & 800 km \\
+Altitude - Layer 3 & 1200 km \\
+Inclination & 53° / 60° / 70° \\
+Orbital Period & 94-113 minutes \\
+Max ISL Distance & 5000 km \\
+Max Neighbors & 8 \\
+ISL Capacity & 300 Mbps \\
+Queue Capacity & 50 packets \\
+\hline
+\end{tabular}
+\end{table}
+
+The constellation provides global coverage with inter-plane and intra-plane ISLs. Figure \ref{fig:3d_constellation} shows the 3D visualization of the constellation.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.48\textwidth]{outputs/3d_viz/constellation_global.png}
+\caption{3D visualization of 248-satellite LEO constellation with three orbital layers. Different colors represent different altitude layers.}
+\label{fig:3d_constellation}
+\end{figure}
+
+\subsection{Traffic Configuration}
+
+Traffic is generated according to three slices with parameters shown in Table \ref{tab:traffic}.
+
+\begin{table}[h]
+\centering
+\caption{Traffic Slice Configuration}
+\label{tab:traffic}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Parameter} & \textbf{URLLC} & \textbf{eMBB} & \textbf{mMTC} \\
+\hline
+\hline
+Priority & 1 (High) & 2 (Med) & 3 (Low) \\
+Weight & 35\% & 35\% & 30\% \\
+Packet Size & 256 B & 1500 B & 128 B \\
+Max Latency & 25 ms & 50 ms & 200 ms \\
+Target PDR & 99.999\% & 99.9\% & 99\% \\
+Bandwidth Req. & 10 Mbps & 100 Mbps & 1 Mbps \\
+\hline
+\end{tabular}
+\end{table}
+
+Traffic is generated at 50 packets/second globally with random source-destination pairs following a realistic geographic distribution.
+
+\subsection{Prediction Model Configuration}
+
+Both LSTM and GRU models share the following architecture:
+
+\begin{itemize}
+\item Input features: 7 (queue, utilization, bandwidth, drops, delay, arrival rate, success rate)
+\item Hidden size: 128
+\item Number of layers: 2
+\item Dropout: 0.2
+\item Lookback window: 50 timesteps
+\item Prediction horizon: 10 timesteps
+\item Batch size: 32
+\item Learning rate: 0.001
+\item Optimizer: Adam
+\end{itemize}
+
+Training data was collected from 5 episodes of 150 timesteps each, totaling 1,693,896 link records. Data was split 80\%-20\% for training and validation. Figure \ref{fig:training_data} shows the data collection process.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.48\textwidth]{training_data_collection.png}
+\caption{Traffic data collection showing queue length evolution across multiple links over time. The diverse patterns demonstrate the need for adaptive prediction.}
+\label{fig:training_data}
+\end{figure}
+
+\subsection{PPO Hyperparameters}
+
+Table \ref{tab:ppo_params} lists the PPO training hyperparameters.
+
+\begin{table}[h]
+\centering
+\caption{PPO Hyperparameters}
+\label{tab:ppo_params}
+\begin{tabular}{|l|c|}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+\hline
+Learning Rate & $10^{-4}$ \\
+Steps per Update & 8192 \\
+Batch Size & 1024 \\
+Number of Epochs & 10 \\
+Discount Factor ($\gamma$) & 0.995 \\
+GAE Lambda ($\lambda$) & 0.98 \\
+Clip Range ($\epsilon$) & 0.15 \\
+Value Coefficient ($c_1$) & 0.7 \\
+Entropy Coefficient ($c_2$) & 0.005 \\
+Max Gradient Norm & 0.5 \\
+Total Timesteps & 1,500,000 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Baseline Methods}
+
+We compare TA-PPO against three baseline routing methods:
+
+\begin{enumerate}
+\item \textbf{Dijkstra}: Shortest-path routing based on propagation delay only. Updates routes every 10 timesteps.
+
+\item \textbf{OSPF}: Link-state routing considering both delay and current queue length. Uses cost function: $C = \tau + 2Q$.
+
+\item \textbf{DRL without Prediction}: Same PPO agent but without predicted features in state space (ablation study).
+\end{enumerate}
+
+\subsection{Evaluation Metrics}
+
+We evaluate using the following metrics:
+
+\begin{itemize}
+\item \textbf{Packet Delivery Ratio (PDR)}: $\frac{\text{Delivered}}{\text{Delivered} + \text{Dropped}} \times 100\%$
+\item \textbf{Average Latency}: Mean end-to-end delay for delivered packets
+\item \textbf{P95 Latency}: 95th percentile latency
+\item \textbf{Average Hop Count}: Mean path length
+\item \textbf{Link Utilization}: Mean bandwidth usage across all ISLs
+\item \textbf{QoS Satisfaction Rate}: Percentage of packets meeting latency targets
+\item \textbf{Drop Reasons}: Breakdown of why packets were dropped
+\end{itemize}
+
+All metrics are computed per traffic slice and aggregated globally.
+
+\subsection{Experimental Procedure}
+
+Each experiment consists of:
+
+\begin{enumerate}
+\item \textbf{Prediction Model Training}: Train LSTM and GRU on collected data (2.1 minutes for 248 satellites)
+\item \textbf{PPO Agent Training}: Train TA-PPO with predictions enabled (1.5M timesteps, ~12 hours)
+\item \textbf{Evaluation}: Run each routing method for 5 episodes of 800 timesteps
+\item \textbf{Statistical Analysis}: Compute mean and standard deviation across episodes
+\end{enumerate}
+
+All experiments were conducted on a machine with:
+\begin{itemize}
+\item CPU: Intel Core i7-11800H @ 2.3 GHz
+\item RAM: 16 GB
+\item GPU: Not used (CPU-only for realistic satellite constraints)
+\item OS: Windows 10
+\item Python: 3.12
+\end{itemize}
+
+\subsection{Implementation Details}
+
+Key implementation considerations:
+
+\begin{itemize}
+\item \textbf{Prediction Warmup}: First 50 timesteps use baseline routing to collect initial data
+\item \textbf{Prediction Caching}: Predictions are cached for 10 timesteps to reduce computation
+\item \textbf{Normalization}: All features are normalized to $[0, 1]$ range
+\item \textbf{Experience Replay}: PPO uses a buffer of 8192 samples for stable updates
+\item \textbf{Early Stopping}: Prediction models use patience of 10 epochs
+\end{itemize}
+
+The complete codebase is approximately 5000 lines of Python across multiple modules:
+
+\begin{itemize}
+\item \texttt{src/env/topology.py}: Network topology management (500 lines)
+\item \texttt{src/routing/drl\_env.py}: PPO environment (800 lines)
+\item \texttt{src/prediction/}: Prediction models and data collection (900 lines)
+\item \texttt{src/metrics/}: Evaluation and visualization (600 lines)
+\item \texttt{src/traffic/}: Traffic generation (400 lines)
+\end{itemize}
+

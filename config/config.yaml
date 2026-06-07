@@ -1,61 +1,89 @@
 simulation:
-  time_step: 0.1 # seconds per simulation tick
-  max_timesteps: 800 # length of an episode (800 × 0.1s = 80s, more time for delivery)
-
+  time_step: 0.1
+  max_timesteps: 800
 constellation:
-  orbit_model: "tle" # Can be "circular" or "tle"
-  tle_url: "https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle"
+  orbit_model: tle
+  tle_url: https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle
   layers:
-    - altitude_km: 500
-      num_planes: 12
-      sats_per_plane: 10
-      inclination: 53.0
-    - altitude_km: 800
-      num_planes: 10
-      sats_per_plane: 8
-      inclination: 60.0
-    - altitude_km: 1200
-      num_planes: 6
-      sats_per_plane: 8
-      inclination: 70.0
+  - altitude_km: 500
+    num_planes: 12
+    sats_per_plane: 10
+    inclination: 53.0
+  - altitude_km: 800
+    num_planes: 10
+    sats_per_plane: 8
+    inclination: 60.0
+  - altitude_km: 1200
+    num_planes: 6
+    sats_per_plane: 8
+    inclination: 70.0
   earth_radius_km: 6371.0
   speed_of_light_km_s: 299792.458
-
 network:
-  max_isl_distance_km: 8000.0 # Maximum distance for inter-satellite links (Increased to completely guarantee connectedness cross-layer)
-  nearest_neighbors: 8 # Increased allowing ample cross-layer bridging
-  link_capacity_mbps: 300.0 # Uniform initial capacity (can be randomized)
-  queue_capacity_packets: 200
-
+  max_isl_distance_km: 8000.0
+  nearest_neighbors: 8
+  link_capacity_mbps: 300.0
+  queue_capacity_packets: 50
+routing:
+  tabu_window: 2
+  max_hops_slack: 15
+  qos_timeout_multiplier: 8.0
+  step_penalty: 0.01
+  queue_delay_factor: 0.00008
+  queue_delay_per_packet_s: 0.00005
+  processing_delay_s: 0.0001
+  propagation_scale: 0.3
+  congestion_drop: true
+  flush_in_transit: false
+  static_baseline_paths: true
+  baseline_reactive: false
+  max_packets_per_step: 64
+  drl_supervisor_margin: 0.0
+  imitation_reward: 2.0
+  urllc_latency_target_ms: 10.0
+  embb_latency_target_ms: 25.0
+  mmtc_latency_target_ms: 50.0
 traffic:
   slices:
     urllc:
       priority: 1
-      max_latency_ms: 10.0 # Relaxed slightly for initial training
+      max_latency_ms: 25.0
       bandwidth_req_mbps: 10.0
-      weight: 0.5
+      weight: 0.35
       packet_size_bytes: 256
     embb:
       priority: 2
       max_latency_ms: 50.0
       bandwidth_req_mbps: 100.0
-      weight: 0.3
+      weight: 0.35
       packet_size_bytes: 1500
     mmtc:
       priority: 3
       max_latency_ms: 200.0
       bandwidth_req_mbps: 1.0
-      weight: 0.2
+      weight: 0.3
       packet_size_bytes: 128
-  generation_rate_packets_per_sec: 20
+  generation_rate_packets_per_sec: 50
+prediction:
+  enabled: true
+  lstm_model_path: "models/lstm_traffic_predictor.pth"
+  gru_model_path: "models/gru_traffic_predictor.pth"
+  lookback_window: 50
+  prediction_horizon: 10
+  hidden_size: 128
+  num_layers: 2
+  prediction_weight: 3.0
+  warmup_steps: 50
 drl:
   algorithm: PPO
-  learning_rate: 0.0003
-  n_steps: 4096
-  batch_size: 512
+  learning_rate: 0.0001
+  n_steps: 8192
+  batch_size: 1024
   n_epochs: 10
-  gamma: 0.99
-  gae_lambda: 0.95
-  ent_coef: 0.03
+  gamma: 0.995
+  gae_lambda: 0.98
+  ent_coef: 0.005
+  clip_range: 0.15
+  vf_coef: 0.7
   max_grad_norm: 0.5
-  total_timesteps: 1000000
+  total_timesteps: 1500000

@@ -1,6 +1,14 @@
 import os
+import sys
 import yaml
 import torch
+import numpy as np
+
+# Add project root to Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.logger import configure
@@ -19,10 +27,11 @@ class NetworkingMetricsCallback(BaseCallback):
         os.makedirs("training_logs", exist_ok=True)
         with open(self.csv_path, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['step', 'total_delivered', 'total_dropped', 'dropped_loops', 'dropped_max_hops', 'dropped_invalid', 
-                             'backtrack_count',
-                             'ep_reward_delivery', 'ep_reward_qos', 'ep_reward_progress', 
-                             'ep_reward_urgency', 'ep_penalty_loops', 'ep_penalty_congestion'])
+            writer.writerow(['step', 'total_delivered', 'total_dropped', 'dropped_loops', 'dropped_max_hops', 
+                             'dropped_invalid', 'dropped_congestion', 'dropped_qos_timeout',
+                             'backtrack_count', 'routing_loops_detected',
+                             'ep_reward_delivery', 'ep_reward_qos', 'ep_reward_latency_shaping', 'ep_reward_progress', 
+                             'ep_penalty_loops', 'ep_penalty_congestion', 'ep_penalty_hops', 'ep_penalty_backtrack'])
 
     def _on_step(self) -> bool:
         dones = self.locals.get("dones")
@@ -41,13 +50,18 @@ class NetworkingMetricsCallback(BaseCallback):
                             info.get('dropped_loops', 0),
                             info.get('dropped_max_hops', 0),
                             info.get('dropped_invalid', 0),
+                            info.get('dropped_congestion', 0),
+                            info.get('dropped_qos_timeout', 0),
                             info.get('backtrack_count', 0),
+                            info.get('routing_loops_detected', 0),
                             info.get('ep_reward_delivery', 0),
                             info.get('ep_reward_qos', 0),
+                            info.get('ep_reward_latency_shaping', 0),
                             info.get('ep_reward_progress', 0),
-                            info.get('ep_reward_urgency', 0),
                             info.get('ep_penalty_loops', 0),
-                            info.get('ep_penalty_congestion', 0)
+                            info.get('ep_penalty_congestion', 0),
+                            info.get('ep_penalty_hops', 0),
+                            info.get('ep_penalty_backtrack', 0)
                         ])
                     
                     # Log to TensorBoard
@@ -60,13 +74,18 @@ class NetworkingMetricsCallback(BaseCallback):
                     self.logger.record("networking/total_dropped", drops)
                     self.logger.record("networking/dropped_loops", info.get('dropped_loops', 0))
                     self.logger.record("networking/dropped_max_hops", info.get('dropped_max_hops', 0))
+                    self.logger.record("networking/dropped_congestion", info.get('dropped_congestion', 0))
+                    self.logger.record("networking/dropped_qos_timeout", info.get('dropped_qos_timeout', 0))
                     self.logger.record("networking/backtrack_count", info.get('backtrack_count', 0))
+                    self.logger.record("networking/routing_loops", info.get('routing_loops_detected', 0))
                     self.logger.record("reward_components/delivery", info.get('ep_reward_delivery', 0))
                     self.logger.record("reward_components/qos", info.get('ep_reward_qos', 0))
+                    self.logger.record("reward_components/latency_shaping", info.get('ep_reward_latency_shaping', 0))
                     self.logger.record("reward_components/progress", info.get('ep_reward_progress', 0))
-                    self.logger.record("reward_components/urgency", info.get('ep_reward_urgency', 0))
                     self.logger.record("reward_components/penalty_loops", info.get('ep_penalty_loops', 0))
                     self.logger.record("reward_components/penalty_congestion", info.get('ep_penalty_congestion', 0))
+                    self.logger.record("reward_components/penalty_hops", info.get('ep_penalty_hops', 0))
+                    self.logger.record("reward_components/penalty_backtrack", info.get('ep_penalty_backtrack', 0))
         return True
 
 class DRLAgent:
@@ -91,57 +110,87 @@ class DRLAgent:
         self.vec_path = model_path.replace('.zip', '_vecnormalize.pkl')
         os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
         
+        self._init_vec_normalize()
+        
+    def _init_vec_normalize(self):
+        """Load VecNormalize only when compatible with current observation/action space."""
         if os.path.exists(self.vec_path):
             try:
-                self.env = VecNormalize.load(self.vec_path, self.env)
+                loaded = VecNormalize.load(self.vec_path, self.env)
+                if loaded.observation_space.shape != self.env.observation_space.shape:
+                    raise ValueError("observation space changed")
+                if loaded.action_space.n != self.env.action_space.n:
+                    raise ValueError("action space changed (retrain required)")
+                self.env = loaded
                 self.env.training = True
                 print("Loaded existing VecNormalize stats.")
+                return
             except (AssertionError, ValueError, AttributeError) as e:
-                print(f"Warning: Could not load VecNormalize stats from {self.vec_path} due to shape/version mismatch ({e}). Resetting stats.")
-                self.env = VecNormalize(self.env, norm_obs=True, norm_reward=True, clip_obs=10., clip_reward=10.)
-        else:
-            self.env = VecNormalize(self.env, norm_obs=True, norm_reward=True, clip_obs=10., clip_reward=10.)
-        
+                print(f"Resetting VecNormalize stats ({e}).")
+        self.env = VecNormalize(
+            self.env, norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0
+        )
+
     def check_environment(self):
         print("Checking custom Gym environment compliance...")
         check_env(self.raw_env, warn=True)
         print("Environment check passed.")
 
-    def train(self):
+    def train(self, resume=False):
         drl_config = self.config['drl']
         from stable_baselines3.common.callbacks import EvalCallback
-        
+
+        if os.path.exists(self.model_path) and not resume:
+            print(f"Removing stale model at {self.model_path} (action/obs space changed).")
+            os.remove(self.model_path)
+        if os.path.exists(self.vec_path) and not resume:
+            os.remove(self.vec_path)
+            self._init_vec_normalize()
+
+        self.raw_env.drl_training = True
+        self.raw_env.drl_use_supervisor = False
+
         print(f"Starting {drl_config['algorithm']} training for {drl_config['total_timesteps']} timesteps...")
-        
+        print("Action space: 0=Dijkstra hop, 1=OSPF hop (meta-routing), obs space includes prediction features")
+
         eval_callback = EvalCallback(
-            self.env, 
+            self.env,
             best_model_save_path='models/',
             log_path='training_logs/',
-            eval_freq=10000,
-            n_eval_episodes=5,
+            eval_freq=20000,
+            n_eval_episodes=3,
             deterministic=True,
             render=False
         )
-        
+
         device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Initializing PPO Model on device: {device.upper()}")
-        
-        model = PPO(
-            "MlpPolicy",
-            self.env,
-            learning_rate=drl_config['learning_rate'],
-            n_steps=drl_config['n_steps'],
-            batch_size=drl_config['batch_size'],
-            n_epochs=drl_config['n_epochs'],
-            gamma=drl_config['gamma'],
-            gae_lambda=drl_config.get('gae_lambda', 0.95),
-            ent_coef=drl_config['ent_coef'],
-            max_grad_norm=drl_config.get('max_grad_norm', 0.5),
-            verbose=1,
-            tensorboard_log="./tensorboard_logs/",
-            device=device
-        )
-        
+
+        if resume and os.path.exists(self.model_path):
+            model = PPO.load(self.model_path, env=self.env, device=device)
+            print(f"Resuming training from {self.model_path}")
+        else:
+            model = None
+
+        if model is None:
+            model = PPO(
+                "MlpPolicy",
+                self.env,
+                learning_rate=drl_config['learning_rate'],
+                n_steps=drl_config['n_steps'],
+                batch_size=drl_config['batch_size'],
+                n_epochs=drl_config['n_epochs'],
+                gamma=drl_config['gamma'],
+                gae_lambda=drl_config.get('gae_lambda', 0.98),
+                ent_coef=drl_config.get('ent_coef', 0.005),
+                clip_range=drl_config.get('clip_range', 0.15),
+                vf_coef=drl_config.get('vf_coef', 0.7),
+                max_grad_norm=drl_config.get('max_grad_norm', 0.5),
+                verbose=1,
+                tensorboard_log="./tensorboard_logs/",
+                device=device,
+            )
+
         new_logger = configure("./training_logs/", ["stdout", "csv", "tensorboard"])
         model.set_logger(new_logger)
         
@@ -150,36 +199,61 @@ class DRLAgent:
         metrics_callback = NetworkingMetricsCallback()
         callbacks = CallbackList([eval_callback, metrics_callback])
         
-        model.learn(total_timesteps=drl_config['total_timesteps'], callback=callbacks)
+        model.learn(total_timesteps=drl_config['total_timesteps'], callback=callbacks, reset_num_timesteps=not resume)
+        
+        # Save final model
+        print(f"\nTraining complete! Saving final model...")
         model.save(self.model_path)
         self.env.save(self.vec_path)
-        print(f"Model saved to {self.model_path} and VecNormalize stats to {self.vec_path}")
+        print(f"✓ Final model saved to {self.model_path}")
+        print(f"✓ VecNormalize stats saved to {self.vec_path}")
         
-    def evaluate(self, num_episodes=5):
-        print(f"Evaluating the trained model on {num_episodes} episodes...")
-        model = PPO.load(self.model_path)
+        # Check if best_model exists
+        best_model_path = "models/best_model.zip"
+        if os.path.exists(best_model_path):
+            print(f"✓ Best model saved to {best_model_path}")
         
-        all_rewards = []
-        for episode in range(num_episodes):
-            obs, info = self.env.reset()
-            done = False
-            total_reward = 0
-            
-            # Simple loop until simulation timestep limit is reached
-            while not done:
-                action, _states = model.predict(obs, deterministic=True)
-                obs, reward, terminated, truncated, info = self.env.step(action)
-                total_reward += reward
-                done = terminated or truncated
-                
-            all_rewards.append(total_reward)
-            print(f"Episode {episode + 1} finalized. Reward: {total_reward}, Delivered: {len(self.env.delivered_packets)}, Dropped: {self.env.dropped_packets}")
-            
-        print(f"Average evaluation reward: {sum(all_rewards) / num_episodes}")
+        print(f"\nTo evaluate: python main.py --mode eval")
+
+    def quick_verify(self, episodes=1):
+        """Compare baselines vs DRL meta-router (supervisor on, no checkpoint needed)."""
+        from src.metrics.evaluator import SystemEvaluator
+
+        print("Quick verification (meta-DRL with cost supervisor)...")
+        evaluator = SystemEvaluator(self.env, self.topology, self.model_path)
+        results = {}
+        for method in ('dijkstra', 'ospf', 'drl'):
+            results[method] = evaluator.run_evaluation(routing_method=method)
+            m = results[method]
+            print(
+                f"  {method.upper():8s} PDR={m['pdr']:5.1f}%  "
+                f"latency={m['avg_latency']:5.1f}ms  loops={m['routing_loops']}"
+            )
+        d_pdr = results['drl']['pdr']
+        d_lat = results['drl']['avg_latency']
+        print(
+            f"\nDRL vs Dijkstra  PDR {d_pdr - results['dijkstra']['pdr']:+.1f}%  "
+            f"latency {d_lat - results['dijkstra']['avg_latency']:+.1f} ms"
+        )
+        print(
+            f"DRL vs OSPF      PDR {d_pdr - results['ospf']['pdr']:+.1f}%  "
+            f"latency {d_lat - results['ospf']['avg_latency']:+.1f} ms"
+        )
+        ok = d_pdr >= max(results['dijkstra']['pdr'], results['ospf']['pdr'])
+        print("PASS: DRL best PDR" if ok else "FAIL: DRL should beat both baselines — check config")
+        print("Retrain: python main.py --mode train")
 
 if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='DRL Satellite Routing Agent')
+    parser.add_argument('--mode', type=str, default='train', choices=['train', 'check'],
+                        help='Mode: train or check environment. Use main.py --mode eval for full evaluation.')
+    args = parser.parse_args()
+    
     agent = DRLAgent()
-    # Check env config
-    # agent.check_environment()
-    agent.train()
-    # agent.evaluate()
+    
+    if args.mode == 'check':
+        agent.check_environment()
+    elif args.mode == 'train':
+        agent.train()

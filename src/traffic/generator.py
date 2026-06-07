@@ -18,7 +18,11 @@ class Packet:
         self.accumulated_delay = 0.0
         self.is_delivered = False
         self.is_dropped = False
-        self.visited_count = {source: 1}  # Track visits per node for cycle detection
+        self.visited_count = {source: 1}
+        self.baseline_path = None
+        self.baseline_path_idx = 0
+        self.baseline_method = None
+        self.drl_meta_path = None
 
     def __repr__(self):
         return f"<Packet {self.pkt_id} | {self.slice_type} | {self.source}->{self.destination}>"

@@ -1,0 +1,180 @@
+% Part 2: System Model and Problem Formulation
+
+\section{System Model and Problem Formulation}
+
+\subsection{LEO Satellite Network Model}
+
+We consider a LEO satellite constellation $\mathcal{S} = \{s_1, s_2, ..., s_N\}$ consisting of $N$ satellites distributed across multiple orbital planes. The constellation topology at time $t$ is represented as a directed graph $\mathcal{G}(t) = (\mathcal{V}, \mathcal{E}(t))$, where:
+
+\begin{itemize}
+\item $\mathcal{V} = \mathcal{S}$ is the set of vertices (satellites)
+\item $\mathcal{E}(t) \subseteq \mathcal{V} \times \mathcal{V}$ is the set of inter-satellite links (ISLs) at time $t$
+\end{itemize}
+
+Each satellite $s_i$ is characterized by its position vector $\mathbf{p}_i(t) = [x_i(t), y_i(t), z_i(t)]$ in Earth-Centered Inertial (ECI) coordinates, which evolves according to:
+
+\begin{equation}
+\mathbf{p}_i(t + \Delta t) = \mathbf{p}_i(t) + \mathbf{v}_i(t) \cdot \Delta t
+\end{equation}
+
+where $\mathbf{v}_i(t)$ is the velocity vector and $\Delta t$ is the simulation timestep.
+
+An ISL exists between satellites $s_i$ and $s_j$ if:
+
+\begin{equation}
+d_{ij}(t) = \|\mathbf{p}_i(t) - \mathbf{p}_j(t)\| \leq d_{\max}
+\end{equation}
+
+where $d_{ij}(t)$ is the Euclidean distance and $d_{\max}$ is the maximum ISL range. We also enforce line-of-sight constraints to prevent links that pass through Earth.
+
+\subsection{Link Characterization}
+
+Each ISL $e_{ij} \in \mathcal{E}(t)$ is characterized by:
+
+\begin{itemize}
+\item \textbf{Propagation Delay}: $\tau_{ij}(t) = \frac{d_{ij}(t)}{c}$, where $c$ is the speed of light
+\item \textbf{Capacity}: $C_{ij}$ (Mbps) - the maximum data rate
+\item \textbf{Queue Length}: $Q_{ij}(t)$ - number of packets buffered
+\item \textbf{Utilization}: $U_{ij}(t) = \frac{B_{ij}(t)}{C_{ij}} \times 100\%$, where $B_{ij}(t)$ is the instantaneous bandwidth usage
+\end{itemize}
+
+The total end-to-end delay for a path $\mathcal{P} = (s_1, s_2, ..., s_k)$ is:
+
+\begin{equation}
+D_{\mathcal{P}}(t) = \sum_{(s_i,s_{i+1}) \in \mathcal{P}} \left[\tau_{i,i+1}(t) + d_{\text{proc}} + Q_{i,i+1}(t) \cdot d_{\text{queue}}\right]
+\end{equation}
+
+where $d_{\text{proc}}$ is the processing delay per hop and $d_{\text{queue}}$ is the per-packet queuing delay.
+
+\subsection{Traffic Model}
+
+We model three traffic slices corresponding to 6G service classes:
+
+\begin{enumerate}
+\item \textbf{URLLC (Ultra-Reliable Low-Latency Communications)}: Critical applications requiring latency $< 10$ ms and reliability $> 99.999\%$. Examples include autonomous vehicles and industrial automation.
+
+\item \textbf{eMBB (Enhanced Mobile Broadband)}: High-throughput applications with moderate latency tolerance ($< 50$ ms). Examples include video streaming and cloud gaming.
+
+\item \textbf{mMTC (Massive Machine-Type Communications)}: IoT applications with relaxed latency requirements ($< 200$ ms) but massive connectivity needs.
+\end{enumerate}
+
+Each traffic slice $k \in \{\text{URLLC}, \text{eMBB}, \text{mMTC}\}$ is characterized by:
+
+\begin{equation}
+\text{Slice}_k = \{\lambda_k, L_k^{\max}, \pi_k, w_k\}
+\end{equation}
+
+where:
+\begin{itemize}
+\item $\lambda_k$ is the packet arrival rate
+\item $L_k^{\max}$ is the maximum tolerable latency
+\item $\pi_k$ is the priority level (1 = highest)
+\item $w_k$ is the traffic weight/proportion
+\end{itemize}
+
+\subsection{Problem Formulation}
+
+Given the dynamic network graph $\mathcal{G}(t)$ and traffic demands, our objective is to learn a routing policy $\pi_\theta$ parameterized by $\theta$ that maximizes the expected cumulative reward:
+
+\begin{equation}
+\max_{\theta} \mathbb{E}_{\pi_\theta}\left[\sum_{t=0}^{T} \gamma^t R_t\right]
+\end{equation}
+
+where $\gamma \in [0,1]$ is the discount factor and $R_t$ is the reward at timestep $t$.
+
+The reward function is designed to balance multiple objectives:
+
+\begin{equation}
+\begin{split}
+R_t = & \alpha_1 \cdot R_{\text{delivery}}(t) + \alpha_2 \cdot R_{\text{QoS}}(t) \\
+      & - \beta_1 \cdot P_{\text{latency}}(t) - \beta_2 \cdot P_{\text{drops}}(t) \\
+      & - \beta_3 \cdot P_{\text{congestion}}(t)
+\end{split}
+\end{equation}
+
+where:
+
+\begin{itemize}
+\item $R_{\text{delivery}}(t) = \mathbb{1}_{\text{delivered}} \times 100$ rewards successful packet delivery
+\item $R_{\text{QoS}}(t) = \mathbb{1}_{\text{QoS met}} \times 50$ rewards meeting QoS targets
+\item $P_{\text{latency}}(t) = \frac{D_t}{L_k^{\max}}$ penalizes high latency relative to target
+\item $P_{\text{drops}}(t) = 500$ heavily penalizes packet drops
+\item $P_{\text{congestion}}(t) = \sum_{e_{ij}} \frac{Q_{ij}(t)}{Q_{\max}}$ penalizes network congestion
+\end{itemize}
+
+The hyperparameters $\alpha_1, \alpha_2, \beta_1, \beta_2, \beta_3$ control the trade-offs between objectives.
+
+\subsection{State Space}
+
+At each routing decision, the agent observes state $\mathbf{s}_t$ consisting of:
+
+\begin{equation}
+\mathbf{s}_t = [\mathbf{s}_t^{\text{global}}, \mathbf{s}_t^{\text{neighbor}}]
+\end{equation}
+
+\textbf{Global Features} (16 dimensions):
+\begin{itemize}
+\item Current satellite position (3D coordinates)
+\item Destination satellite position
+\item Packet priority and slice type
+\item Current queue depth
+\item Hop count and time-to-live
+\item Geographic progress toward destination
+\end{itemize}
+
+\textbf{Per-Neighbor Features} (13 dimensions $\times$ $N_{\max}$ neighbors):
+
+For each neighboring satellite $j$:
+\begin{itemize}
+\item Propagation delay $\tau_{ij}$
+\item Queue length $Q_{ij}$
+\item Link utilization $U_{ij}$
+\item Bandwidth availability
+\item Success rate (historical)
+\item Packet drop rate
+\item Distance to destination
+\item Angular velocity
+\item Link stability indicator
+\item Congestion level
+\item Average delay
+\item \textbf{Predicted queue length} $\hat{Q}_{ij}(t+h)$ (NEW)
+\item \textbf{Predicted utilization} $\hat{U}_{ij}(t+h)$ (NEW)
+\end{itemize}
+
+The predicted features enable proactive routing by anticipating future link conditions.
+
+\subsection{Action Space}
+
+The action space consists of selecting the next-hop satellite from the set of available neighbors:
+
+\begin{equation}
+\mathcal{A}_t = \{s_j : e_{ij} \in \mathcal{E}(t), j \neq i\}
+\end{equation}
+
+The action is represented as a discrete choice $a_t \in \{0, 1, ..., N_{\max}-1\}$, where $N_{\max}$ is the maximum number of neighbors (padded if necessary).
+
+\subsection{Challenges and Design Considerations}
+
+The problem presents several challenges:
+
+\begin{enumerate}
+\item \textbf{Partial Observability}: The agent only observes local neighbor information, not global network state.
+
+\item \textbf{Non-Stationary Environment}: Satellite motion causes continuous topology evolution.
+
+\item \textbf{Multi-Objective Optimization}: Balancing latency, throughput, reliability, and fairness requires careful reward shaping.
+
+\item \textbf{Scalability}: The action space grows with the number of neighbors, and the network contains hundreds of satellites.
+
+\item \textbf{Cold Start}: Prediction models require historical data, creating a warmup period.
+\end{enumerate}
+
+Our TA-PPO framework addresses these challenges through:
+\begin{itemize}
+\item Decentralized decision-making at each satellite
+\item Continuous learning and adaptation
+\item Hierarchical reward structure
+\item Efficient neural network architectures
+\item Adaptive prediction warmup strategy
+\end{itemize}
+

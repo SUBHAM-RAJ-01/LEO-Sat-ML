@@ -1,0 +1,144 @@
+% IEEE Access Template for Predictive QoS-Aware Routing Paper
+\documentclass[journal]{IEEEtran}
+
+% Packages
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{subfigure}
+\usepackage{hyperref}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+% Title
+\title{Predictive QoS-Aware Routing in 6G-Enabled LEO Satellite Networks Using Traffic-Aware Proximal Policy Optimization}
+
+% Authors
+\author{
+\IEEEauthorblockN{Subham Raj}
+\IEEEauthorblockA{\textit{Dept. of Electronics and}\\
+\textit{Communication Engineering}\\
+\textit{RV College of Engineering}\\
+Bengaluru, Karnataka\\
+subhamraj.ec22@rvce.edu.in}
+\and
+\IEEEauthorblockN{Sunny Agarwal}
+\IEEEauthorblockA{\textit{Dept. of Electronics and}\\
+\textit{Communication Engineering}\\
+\textit{RV College of Engineering}\\
+Bengaluru, Karnataka\\
+sunnyagarwal.ec22@rvce.edu.in}
+\and
+\IEEEauthorblockN{Rohini S Hallikar}
+\IEEEauthorblockA{\textit{Senior IEEE Member}\\
+\textit{Dept. of Electronics and}\\
+\textit{Communication Engineering}\\
+\textit{RV College of Engineering}\\
+Bengaluru, Karnataka\\
+rohini@rvce.edu.in}
+\and
+\IEEEauthorblockN{Roja Reddy B}
+\IEEEauthorblockA{\textit{Dept. of Telecommunication}\\
+\textit{Engineering}\\
+\textit{RV College of Engineering}\\
+Bengaluru, Karnataka\\
+rojareddy.b@rvce.edu.in}
+}
+
+\maketitle
+
+\begin{abstract}
+Low Earth Orbit (LEO) satellite networks are essential for providing global connectivity in future 6G wireless systems. However, dynamic topology changes and diverse Quality of Service (QoS) requirements pose significant challenges for routing protocols. This paper presents a novel predictive QoS-aware routing framework that combines Deep Reinforcement Learning (DRL) with traffic prediction models to enable proactive congestion avoidance. We propose a Traffic-Aware Proximal Policy Optimization (TA-PPO) approach that integrates Long Short-Term Memory (LSTM) and Gated Recurrent Unit (GRU) networks to predict future link congestion up to 10 timesteps ahead. The prediction models are trained on 1.69 million link records collected from a 248-satellite constellation simulation. Our experimental results demonstrate that the proposed TA-PPO achieves 99.97\% packet delivery ratio (PDR), which is 6.79\% higher than traditional shortest-path routing, while using 267 times fewer packet drops. The system achieves an average hop count of 7.34 with optimal load balancing across the network. Compared to conventional Dijkstra and OSPF routing, our approach reduces packet drops by 99.6\% while maintaining competitive latency performance. The GRU-based prediction model achieves a mean absolute error (MAE) of 0.0001, enabling accurate proactive routing decisions. This work demonstrates the feasibility of intelligent, prediction-aware routing for next-generation satellite networks supporting diverse 6G services including ultra-reliable low-latency communications (URLLC), enhanced mobile broadband (eMBB), and massive machine-type communications (mMTC).
+\end{abstract}
+
+\begin{IEEEkeywords}
+6G networks, LEO satellites, deep reinforcement learning, traffic prediction, QoS routing, LSTM, GRU, proximal policy optimization, predictive networking
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+\IEEEPARstart{T}{he} evolution toward sixth-generation (6G) wireless networks promises ubiquitous global connectivity, with Low Earth Orbit (LEO) satellite constellations playing a pivotal role in achieving seamless coverage \cite{giordani2020toward}. LEO satellite networks offer several advantages including lower propagation delay compared to geostationary satellites, global coverage including remote and maritime areas, and the ability to support diverse Quality of Service (QoS) requirements \cite{kodheli2021satellite}. Major commercial deployments such as Starlink, OneWeb, and Amazon's Project Kuiper are already demonstrating the viability of mega-constellations with thousands of satellites \cite{del2019analysis}.
+
+However, LEO satellite networks face unique challenges that differentiate them from terrestrial networks \cite{liu2021routing}:
+
+\begin{itemize}
+\item \textbf{Dynamic Topology:} Satellites move at approximately 7.5 km/s, causing rapid topology changes and frequent link handovers.
+\item \textbf{Heterogeneous Traffic:} 6G applications demand diverse QoS profiles, from ultra-low latency for autonomous systems to massive connectivity for IoT devices.
+\item \textbf{Limited Resources:} Onboard processing power, memory, and inter-satellite link (ISL) bandwidth are constrained.
+\item \textbf{Unpredictable Congestion:} Traffic patterns vary across geographical regions and time, leading to potential hotspots.
+\end{itemize}
+
+Traditional routing protocols such as Dijkstra's shortest path and OSPF were designed for terrestrial networks with relatively stable topologies \cite{katz2003optimized}. When applied to LEO networks, these approaches suffer from high packet loss due to their reactive nature—they only respond to congestion after it occurs \cite{ekici2009comparative}. Software-Defined Networking (SDN) approaches have been proposed but require centralized control, introducing latency and scalability concerns \cite{papa2021design}.
+
+Deep Reinforcement Learning (DRL) has emerged as a promising solution for complex network optimization problems \cite{luong2019applications}. DRL agents can learn optimal policies through interaction with the environment, adapting to dynamic conditions without requiring explicit programming \cite{mao2016resource}. Recent works have applied DRL to satellite routing \cite{wang2021intelligent, chen2021deep}, but they lack the ability to predict future network states, resulting in reactive rather than proactive decision-making.
+
+\subsection{Motivation and Contributions}
+
+The key insight of this work is that \textit{predicting future congestion enables proactive routing decisions}, allowing the network to avoid bottlenecks before they materialize. By integrating traffic prediction models with DRL-based routing, we can achieve:
+
+\begin{enumerate}
+\item \textbf{Proactive Congestion Avoidance:} Route packets away from links that will become congested in the near future.
+\item \textbf{Improved Load Balancing:} Distribute traffic across the network before hotspots form.
+\item \textbf{Higher Reliability:} Reduce packet drops by anticipating and mitigating congestion.
+\item \textbf{QoS Differentiation:} Tailor routing decisions to traffic slice requirements (URLLC, eMBB, mMTC).
+\end{enumerate}
+
+The main contributions of this paper are:
+
+\begin{enumerate}
+\item We propose \textbf{Traffic-Aware Proximal Policy Optimization (TA-PPO)}, a novel DRL framework that integrates LSTM and GRU networks for predicting link congestion up to 10 timesteps ahead.
+
+\item We develop a comprehensive simulation environment modeling a 248-satellite LEO constellation with realistic ISL dynamics, queue management, and three-tier traffic generation (URLLC/eMBB/mMTC).
+
+\item We demonstrate that our approach achieves \textbf{99.97\% PDR}, reducing packet drops by \textbf{267$\times$} compared to shortest-path routing, while maintaining the shortest average hop count of 7.34.
+
+\item We conduct extensive comparative analysis against Dijkstra and OSPF baselines, showing superior performance in PDR, routing efficiency, and network utilization.
+
+\item We provide detailed ablation studies demonstrating the individual contributions of LSTM vs. GRU prediction models, with GRU achieving 6$\times$ better accuracy (MAE: 0.0001 vs. 0.0006).
+\end{enumerate}
+
+The remainder of this paper is organized as follows: Section II reviews related work in satellite routing and DRL applications. Section III describes the system model and problem formulation. Section IV presents our TA-PPO framework including prediction models and routing algorithm. Section V details the experimental setup and implementation. Section VI presents comprehensive results and analysis. Section VII discusses practical deployment considerations, and Section VIII concludes the paper.
+
+\section{Related Work}
+
+\subsection{LEO Satellite Network Routing}
+
+Early satellite routing protocols adapted terrestrial approaches for space networks. The Contact Graph Routing (CGR) algorithm \cite{burleigh2016contact} uses predictable satellite motion to compute routes based on contact schedules. However, CGR assumes deterministic link availability and does not account for dynamic congestion. Geographic routing protocols like GPSRJ \cite{cheng2016novel} exploit satellite position information but struggle with load balancing.
+
+Load-aware routing schemes have been proposed to address congestion. Li et al. \cite{li2018load} developed a load-aware routing algorithm that considers queue lengths, but it reacts to congestion rather than predicting it. Traffic engineering approaches \cite{wang2020traffic} optimize routes based on historical patterns but cannot adapt to real-time variations.
+
+\subsection{Deep Reinforcement Learning for Networking}
+
+DRL has been successfully applied to various networking problems. Mao et al. \cite{mao2016resource} pioneered the use of DRL for video streaming adaptation. Xu et al. \cite{xu2018experience} applied Q-learning to routing in SDN environments. For satellite networks specifically, Wang et al. \cite{wang2021intelligent} used Deep Q-Networks (DQN) for routing but did not consider QoS differentiation. Chen et al. \cite{chen2021deep} proposed a DRL framework for LEO routing that improved upon traditional methods but lacked prediction capabilities.
+
+Proximal Policy Optimization (PPO) \cite{schulman2017proximal} has become popular due to its stability and sample efficiency. Zhou et al. \cite{zhou2021intelligent} applied PPO to UAV networks, while Yang et al. \cite{yang2021multi} used multi-agent PPO for terrestrial routing. However, these works do not address the unique challenges of LEO satellite networks or incorporate traffic prediction.
+
+\subsection{Traffic Prediction in Networks}
+
+Time-series prediction using recurrent neural networks has been extensively studied. LSTM networks \cite{hochreiter1997long} can capture long-term dependencies in sequential data, making them suitable for traffic forecasting. Azzouni et al. \cite{azzouni2017neutm} used LSTM for network traffic prediction in data centers. GRU networks \cite{cho2014learning} offer similar capabilities with fewer parameters, often achieving comparable or better performance \cite{chung2014empirical}.
+
+For satellite networks, traffic prediction has been explored for capacity planning \cite{wang2019machine} but not for real-time routing decisions. Feng et al. \cite{feng2020deep} predicted satellite network traffic for resource allocation but operated on longer timescales (minutes to hours) rather than sub-second routing decisions.
+
+\subsection{Research Gap}
+
+While prior work has separately addressed DRL-based routing and traffic prediction, no existing approach integrates both for proactive LEO satellite routing. Specifically:
+
+\begin{itemize}
+\item Existing DRL routing methods are \textit{reactive}, responding to congestion after it occurs.
+\item Traffic prediction models have not been integrated into real-time routing decision-making.
+\item QoS-aware routing for diverse 6G traffic slices (URLLC/eMBB/mMTC) in LEO networks remains underexplored.
+\item Comprehensive evaluation comparing predictive DRL against traditional baselines is lacking.
+\end{itemize}
+
+This paper fills these gaps by proposing TA-PPO, which combines traffic prediction with DRL to enable proactive, QoS-aware routing in LEO satellite networks.
+
